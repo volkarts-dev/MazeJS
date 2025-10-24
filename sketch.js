@@ -1,18 +1,32 @@
-const DirVec = {
-  "N": [ 0, -1],
-  "E": [ 1,  0],
-  "S": [ 0,  1],
-  "W": [-1,  0],
-}
+const NORTH = 0;
+const EAST = 1;
+const SOUTH = 2;
+const WEST = 3;
 
-const DirRev = {
-  "N": "S",
-  "E": "W",
-  "S": "N",
-  "W": "E",
-}
+const DirVec = [
+  [ 0, -1],
+  [ 1,  0],
+  [ 0,  1],
+  [-1,  0],
+];
+
+const DirRev = [
+  SOUTH,
+  WEST,
+  NORTH,
+  EAST,
+];
 
 const BlockSize = 19;
+
+const PivotOffset = [
+  [Math.ceil(BlockSize / 2), 0],
+  [BlockSize, Math.ceil(BlockSize / 2)],
+  [Math.ceil(BlockSize / 2), BlockSize],
+  [0, Math.ceil(BlockSize / 2)],
+];
+
+// ************************************************************************************************
 
 class Board {
   constructor() {
@@ -38,97 +52,133 @@ class Board {
       return null;
     let options = [];
     if (vec.x > 0) {
-      options.push("W");
+      options.push(WEST);
     }
     if (vec.x < BlockSize + 9 * BlockSize * 2) {
-      options.push("E");
+      options.push(EAST);
     }
     if (vec.y > 0) {
-      options.push("N");
+      options.push(NORTH);
     }
     if (vec.y < BlockSize + 9 * BlockSize * 2) {
-      options.push("S");
+      options.push(SOUTH);
     }
     return options;
   }
+
+  isOutOfBounds(vec) {
+    return vec.x < 0 || vec.x >= 400 || vec.y < 0 || vec.y >= 400;
+  }
 }
 
+// ************************************************************************************************
+
 class Player {
-  static texPos = {
-    "N": [BlockSize * 0, BlockSize * 1],
-    "E": [BlockSize * 1, BlockSize * 1],
-    "S": [BlockSize * 2, BlockSize * 1],
-    "W": [BlockSize * 3, BlockSize * 1],
-    "dying": [BlockSize * 1, BlockSize * 0],
-  };
+  static texPos = [
+    [BlockSize * 0, BlockSize * 1],
+    [BlockSize * 1, BlockSize * 1],
+    [BlockSize * 2, BlockSize * 1],
+    [BlockSize * 3, BlockSize * 1],
+    [BlockSize * 1, BlockSize * 0],
+  ];
 
   constructor() {
     this.pos = createVector(5 * BlockSize * 2, 10 * BlockSize * 2);
-    this.dir = "N";
+    this.dir = NORTH;
     this.dying = false;
     this.ttl = -1;
   }
 
   update(juncOpts) {
-    if (!juncOpts || juncOpts.includes(this.dir)) {
-      this.pos.x += DirVec[this.dir][0];
-      this.pos.y += DirVec[this.dir][1];
+    if (!this.dying) {
+      if ((turnRequest !== null) &&
+        ((turnRequest == DirRev[this.dir]) || (juncOpts && juncOpts.includes(turnRequest)))) {
+        this.dir = turnRequest;
+      }
+
+      if (fireRequest) {
+        fireRequest = false;
+
+        if (energy > 5) {
+          const pivot = p5.Vector.add(this.pos, PivotOffset[this.dir]);
+
+          bullets.push(new Bullet(pivot, this.dir));
+
+          energy -= 5;
+        }
+      }
+
+      if (!juncOpts || juncOpts.includes(this.dir)) {
+        this._updatePos();
+      }
     }
-  }
 
-  draw() {
-    const t = Player.texPos[this.dying ? "dying" : this.dir];
-    image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, t[0], t[1], BlockSize, BlockSize);
-  }
-
-  kill() {
-    this.dying = true;
-    this.ttl = 30;
-  }
-
-  control(juncOpts) {
-    if (this.dying) {
-      return;
-    }
-
-    if (turnRequest && ((turnRequest == DirRev[this.dir]) || (juncOpts && juncOpts.includes(turnRequest)))) {
-      this.dir = turnRequest;
-    }
-  }
-}
-
-class Enemy {
-  static texPos = {
-    "N": [BlockSize * 0, BlockSize * 2],
-    "E": [BlockSize * 1, BlockSize * 2],
-    "S": [BlockSize * 2, BlockSize * 2],
-    "W": [BlockSize * 3, BlockSize * 2],
-    "dying": [BlockSize * 1, BlockSize * 0],
-  };
-
-  static pivot = {
-    "N": [Math.ceil(BlockSize / 2), 0],
-    "E": [BlockSize, Math.ceil(BlockSize / 2)],
-    "S": [Math.ceil(BlockSize / 2), BlockSize],
-    "W": [0, Math.ceil(BlockSize / 2)],
-  };
-
-  constructor(pos) {
-    this.pos = pos;
-    this.dir = "S";
-    this.dying = false;
-    this.ttl = -1;
-  }
-
-  update() {
-    this._updatePos();
     if (this.ttl > 0) {
       this.ttl--;
     }
   }
 
   draw() {
-    const t = Enemy.texPos[this.dying ? "dying" : this.dir];
+    if (this.ttl == 0) {
+      return;
+    }
+    const t = Player.texPos[this.dying ? 4 : this.dir];
+    image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, t[0], t[1], BlockSize, BlockSize);
+  }
+
+  kill() {
+    this.dying = true;
+    this.ttl = 5;
+  }
+
+  testCollision(vec) {
+    if (
+      !this.dying &&
+      (this.pos.x < (vec.x + BlockSize - 3)) &&
+      (this.pos.x > (vec.x - BlockSize + 3)) &&
+      (this.pos.y < (vec.y + BlockSize - 3)) &&
+      (this.pos.y > (vec.y - BlockSize + 3))
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  _updatePos() {
+    this.pos.x += DirVec[this.dir][0];
+    this.pos.y += DirVec[this.dir][1];
+  }
+}
+
+// ************************************************************************************************
+
+class Enemy {
+  static texPos = [
+    [BlockSize * 0, BlockSize * 2],
+    [BlockSize * 1, BlockSize * 2],
+    [BlockSize * 2, BlockSize * 2],
+    [BlockSize * 3, BlockSize * 2],
+    [BlockSize * 1, BlockSize * 0],
+  ];
+
+  constructor(pos) {
+    this.pos = pos;
+    this.dir = SOUTH;
+    this.dying = false;
+    this.ttl = -1;
+  }
+
+  update() {
+    if (!this.dying) {
+      this._updatePos();
+    }
+    if (this.ttl > 0) {
+      this.ttl--;
+    }
+  }
+
+  draw() {
+    const t = Enemy.texPos[this.dying ? 4 : this.dir];
     image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, t[0], t[1], BlockSize, BlockSize);
   }
 
@@ -152,11 +202,11 @@ class Enemy {
 
   kill() {
     this.dying = true;
-    this.ttl = 30;
+    this.ttl = 5;
   }
 
   testCollision(vec) {
-    const pivot = p5.Vector.add(this.pos, Enemy.pivot[this.dir]);
+    const pivot = p5.Vector.add(this.pos, PivotOffset[this.dir]);
     if (
       (pivot.x <= (vec.x + BlockSize)) &&
       (pivot.x >= vec.x) &&
@@ -174,24 +224,54 @@ class Enemy {
   }
 }
 
+// ************************************************************************************************
 
+class Bullet {
+  constructor(pos, dir) {
+    this.pos = pos;
+    this.dir = dir;
+  }
 
+  update() {
+    this.pos.x += DirVec[this.dir][0] * 10;
+    this.pos.y += DirVec[this.dir][1] * 10;
+  }
 
+  draw() {
+    fill("white");
+    noStroke();
+    rect(this.pos.x - 1, this.pos.y - 1, 3, 3);
+  }
 
+  testCollision(vec) {
+    if (
+      (this.pos.x < (vec.x + BlockSize - 2)) &&
+      (this.pos.x > (vec.x + 2)) &&
+      (this.pos.y < (vec.y + BlockSize - 2)) &&
+      (this.pos.y > (vec.y + 2))
+    ) {
+      return true;
+    }
+    return false;
+  }
+}
 
-
-
-
-
+// ************************************************************************************************
 
 let textureAtlas;
+
+let level;
+let energy;
+let points;
+let eneryRefresh;
 
 let board;
 let player;
 let enemies;
+let bullets;
 
-let active = true;
-let pause = true;
+let active = false;
+let pause = false;
 let fireRequest = false;
 let turnRequest = null;
 
@@ -214,13 +294,21 @@ function draw() {
   background(0);
   board.draw();
 
+  if (player.ttl == 0) {
+    active = false;
+    startLevel(1);
+  }
+
+  if (enemies.length == 0) {
+    active = false;
+    startLevel(level + 1);
+  }
+
   const playerJuncOpts = board.getJunctionOptions(player.pos);
 
   if (active && !pause) {
     player.update(playerJuncOpts);
   }
-
-  player.control(playerJuncOpts);
 
   player.draw();
 
@@ -229,6 +317,11 @@ function draw() {
 
     if (active && !pause) {
       enemy.update();
+
+      if (enemy.ttl == 0) {
+        enemies.splice(i, 1);
+        continue;
+      }
 
       for (let e = 0; e < enemies.length; e++) {
         if (e == i) {
@@ -240,8 +333,9 @@ function draw() {
         }
       }
 
-      if (enemy.testCollision(player.pos)) {
-        // TODO player death
+      if (player.testCollision(enemy.pos)) {
+        player.kill();
+        enemy.kill();
       }
 
       const juncOpts = board.getJunctionOptions(enemy.pos);
@@ -252,6 +346,52 @@ function draw() {
 
     enemy.draw();
   }
+
+  for (let i = 0; i < bullets.length; i++) {
+    const bullet = bullets[i];
+
+    bullet.update();
+
+    if (board.isOutOfBounds(bullet.pos)) {
+      bullets.splice(i, 1);
+      continue;
+    }
+
+    for (let e = 0; e < enemies.length; e++) {
+      const enemy = enemies[e];
+
+      if (bullet.testCollision(enemy.pos)) {
+        points += 10;
+        enemy.kill();
+        bullets.splice(i, 1);
+        continue;
+      }
+    }
+
+    bullet.draw();
+  }
+
+  if (energy < 100) {
+    eneryRefresh++;
+    if (eneryRefresh > 15) {
+      eneryRefresh = 0;
+      energy++;
+    }
+  } else {
+    eneryRefresh = 0;
+  }
+
+  fill("gray");
+  textSize(10);
+  text("Level:", 410, 18);
+  text("Energy:", 410, 38);
+  text("Points:", 410, 58);
+
+  fill("white");
+  textSize(15);
+  text(level, 450, 20);
+  text(energy, 450, 40);
+  text(points, 450, 60);
 }
 
 function keyPressed() {
@@ -267,26 +407,37 @@ function keyPressed() {
     return;
   }
 
-  pause = false;
+  if (pause) {
+    return;
+  }
 
   if (keyCode == 32) {
     fireRequest = true;
   }
   else if (keyCode == LEFT_ARROW) {
-    turnRequest = "W";
+    turnRequest = WEST;
   } else if (keyCode == RIGHT_ARROW) {
-    turnRequest = "E";
+    turnRequest = EAST;
   } else if (keyCode == UP_ARROW) {
-    turnRequest = "N";
+    turnRequest = NORTH;
   } else if (keyCode == DOWN_ARROW) {
-    turnRequest = "S";
+    turnRequest = SOUTH;
   }
 }
 
 function keyReleased() {
 }
 
-function startLevel(level) {
+// ************************************************************************************************
+
+function startLevel(lvl) {
+  level = lvl;
+  energy = 100;
+  if (level == 1) {
+    points = 0;
+  }
+  eneryRefresh = 0;
+
   board = new Board();
   player = new Player();
 
@@ -296,12 +447,14 @@ function startLevel(level) {
     if (i >= 5) e++;
     enemies.push(new Enemy(createVector(e * BlockSize * 2, 0)));
   }
+
+  bullets = [];
 }
 
 function vec2Dir(vec) {
   if (Math.abs(vec.x) > Math.abs(vec.y)) {
-    return vec.x < 0 ? "W" : "E";
+    return vec.x < 0 ? WEST : EAST;
   } else {
-    return vec.y < 0 ? "N" : "S";
+    return vec.y < 0 ? NORTH : SOUTH;
   }
 }
