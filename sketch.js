@@ -3,6 +3,9 @@ const EAST = 1;
 const SOUTH = 2;
 const WEST = 3;
 
+const KEY_B = 66;
+const KEY_J = 74;
+
 const DirVec = [
   [ 0, -1],
   [ 1,  0],
@@ -25,6 +28,8 @@ const PivotOffset = [
   [Math.ceil(BlockSize / 2), BlockSize],
   [0, Math.ceil(BlockSize / 2)],
 ];
+
+const BeamTime = 30;
 
 // ************************************************************************************************
 
@@ -82,34 +87,76 @@ class Player {
     [BlockSize * 1, BlockSize * 0],
   ];
 
+  static boostTexPos = [
+    [BlockSize * 0, BlockSize * 3],
+    [BlockSize * 1, BlockSize * 3],
+    [BlockSize * 2, BlockSize * 3],
+    [BlockSize * 3, BlockSize * 3],
+  ];
+
+  static beamTexPos = [BlockSize * 0, BlockSize * 0];
+
+  static boostTileOffset = [
+    [0, BlockSize],
+    [-BlockSize, 0],
+    [0, -BlockSize],
+    [BlockSize, 0],
+  ]
+
   constructor() {
     this.pos = createVector(5 * BlockSize * 2, 10 * BlockSize * 2);
     this.dir = NORTH;
+    this.energy = 100;
+    this.erc = 0;
+    this.boost = false;
+    this.beaming = -1;
     this.dying = false;
     this.ttl = -1;
   }
 
   update(juncOpts) {
-    if (!this.dying) {
-      if ((turnRequest !== null) &&
+    if (!this.dying && (this.beaming == -1)) {
+      if (!this.boost && (turnRequest !== null) &&
         ((turnRequest == DirRev[this.dir]) || (juncOpts && juncOpts.includes(turnRequest)))) {
         this.dir = turnRequest;
+      }
+
+      if (beamRequest) {
+        if (this._drawEnergy(30)) {
+          this.beaming = BeamTime;
+        }
       }
 
       if (fireRequest) {
         fireRequest = false;
 
-        if (energy > 5) {
+        if (this._drawEnergy(5)) {
           const pivot = p5.Vector.add(this.pos, PivotOffset[this.dir]);
-
           bullets.push(new Bullet(pivot, this.dir));
+        }
+      }
 
-          energy -= 5;
+      this.boost = false;
+      if (keyIsDown(KEY_B)) {
+        if (this._drawEnergy(1)) {
+          this.boost = true;
         }
       }
 
       if (!juncOpts || juncOpts.includes(this.dir)) {
         this._updatePos();
+      }
+
+      this._refreshEnery();
+    }
+
+    if (this.beaming > 0) {
+      this.beaming--;
+      if (this.beaming == Math.round(BeamTime / 2)) {
+        this._jump();
+      } else if (this.beaming == 0) {
+        this.beaming = -1;
+        beamRequest = false;
       }
     }
 
@@ -122,8 +169,20 @@ class Player {
     if (this.ttl == 0) {
       return;
     }
-    const t = Player.texPos[this.dying ? 4 : this.dir];
-    image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, t[0], t[1], BlockSize, BlockSize);
+
+    if (this.beaming == -1) {
+      const t = Player.texPos[this.dying ? 4 : this.dir];
+      image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, t[0], t[1], BlockSize, BlockSize);
+
+      if (!this.dying && this.boost) {
+        const bt = Player.boostTexPos[this.dir];
+        const bpos = p5.Vector.add(this.pos, Player.boostTileOffset[this.dir]);
+        image(textureAtlas, bpos.x, bpos.y, BlockSize, BlockSize, bt[0], bt[1], BlockSize, BlockSize);
+      }
+    } else {
+      const bt = Player.beamTexPos;
+      image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, bt[0], bt[1], BlockSize, BlockSize);
+    }
   }
 
   kill() {
@@ -145,8 +204,39 @@ class Player {
   }
 
   _updatePos() {
-    this.pos.x += DirVec[this.dir][0];
-    this.pos.y += DirVec[this.dir][1];
+    const fac = this.boost ? 3 : 1
+    this.pos.x += DirVec[this.dir][0] * fac;
+    this.pos.y += DirVec[this.dir][1] * fac;
+  }
+
+  _drawEnergy(amount) {
+    if (this.energy < amount) {
+      return false;
+    }
+    this.energy -= amount;
+    this.erc = 0;
+    return true;
+  }
+
+  _refreshEnery() {
+    this.erc++;
+    if (this.erc > 15) {
+      this.erc = 0;
+      this.energy++;
+      if (this.energy > 100) {
+        this.energy = 100;
+      }
+    }
+  }
+
+  _jump() {
+    this.pos.x += DirVec[this.dir][0] * 100;
+    this.pos.y += DirVec[this.dir][1] * 100;
+
+    const end = 10 * BlockSize * 2;
+
+    this.pos.x = clamp(this.pos.x, 0, end);
+    this.pos.y = clamp(this.pos.y, 0, end);
   }
 }
 
@@ -261,9 +351,7 @@ class Bullet {
 let textureAtlas;
 
 let level;
-let energy;
 let points;
-let eneryRefresh;
 
 let board;
 let player;
@@ -272,8 +360,9 @@ let bullets;
 
 let active = false;
 let pause = false;
-let fireRequest = false;
 let turnRequest = null;
+let fireRequest = false;
+let beamRequest = false;
 
 function preload() {
   textureAtlas = loadImage('/assets/maze.png');
@@ -371,16 +460,6 @@ function draw() {
     bullet.draw();
   }
 
-  if (energy < 100) {
-    eneryRefresh++;
-    if (eneryRefresh > 15) {
-      eneryRefresh = 0;
-      energy++;
-    }
-  } else {
-    eneryRefresh = 0;
-  }
-
   fill("gray");
   textSize(10);
   text("Level:", 410, 18);
@@ -390,7 +469,7 @@ function draw() {
   fill("white");
   textSize(15);
   text(level, 450, 20);
-  text(energy, 450, 40);
+  text(Math.round(player.energy), 450, 40);
   text(points, 450, 60);
 }
 
@@ -414,7 +493,9 @@ function keyPressed() {
   if (keyCode == 32) {
     fireRequest = true;
   }
-  else if (keyCode == LEFT_ARROW) {
+  else if (keyCode == KEY_J) {
+    beamRequest = true;
+  } else if (keyCode == LEFT_ARROW) {
     turnRequest = WEST;
   } else if (keyCode == RIGHT_ARROW) {
     turnRequest = EAST;
@@ -432,11 +513,14 @@ function keyReleased() {
 
 function startLevel(lvl) {
   level = lvl;
-  energy = 100;
   if (level == 1) {
     points = 0;
   }
   eneryRefresh = 0;
+
+  turnRequest = null;
+  fireRequest = false;
+  beamRequest = false;
 
   board = new Board();
   player = new Player();
@@ -457,4 +541,8 @@ function vec2Dir(vec) {
   } else {
     return vec.y < 0 ? NORTH : SOUTH;
   }
+}
+
+function clamp(num, min, max) {
+  return (num <= min) ? min : ((num >= max) ? max : num);
 }
