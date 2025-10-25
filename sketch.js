@@ -6,6 +6,9 @@ const WEST = 3;
 const KEY_B = 66;
 const KEY_J = 74;
 
+const TYPE_PLAYER = 1;
+const TYPE_ENEMY = 2;
+
 const DirVec = [
   [ 0, -1],
   [ 1,  0],
@@ -132,7 +135,7 @@ class Player {
 
         if (this._drawEnergy(5)) {
           const pivot = p5.Vector.add(this.pos, PivotOffset[this.dir]);
-          bullets.push(new Bullet(pivot, this.dir));
+          bullets.push(new Bullet(pivot, this.dir, TYPE_PLAYER));
         }
       }
 
@@ -260,8 +263,14 @@ class Enemy {
 
   update() {
     if (!this.dying) {
+      if (Math.random() < (level / 1000)) {
+        const pivot = p5.Vector.add(this.pos, PivotOffset[this.dir]);
+        bullets.push(new Bullet(pivot, this.dir, TYPE_ENEMY));
+      }
+
       this._updatePos();
     }
+
     if (this.ttl > 0) {
       this.ttl--;
     }
@@ -317,14 +326,16 @@ class Enemy {
 // ************************************************************************************************
 
 class Bullet {
-  constructor(pos, dir) {
+  constructor(pos, dir, sender) {
     this.pos = pos;
     this.dir = dir;
+    this.sender = sender;
   }
 
   update() {
-    this.pos.x += DirVec[this.dir][0] * 10;
-    this.pos.y += DirVec[this.dir][1] * 10;
+    const fac = (this.sender == TYPE_PLAYER) ? 10 : 3;
+    this.pos.x += DirVec[this.dir][0] * fac;
+    this.pos.y += DirVec[this.dir][1] * fac;
   }
 
   draw() {
@@ -369,7 +380,7 @@ function preload() {
 }
 
 function setup() {
-  createCanvas(1000, 1000);
+  createCanvas(1000, 815);
   noSmooth();
 
   frameRate(30);
@@ -449,11 +460,15 @@ function draw() {
     for (let e = 0; e < enemies.length; e++) {
       const enemy = enemies[e];
 
-      if (bullet.testCollision(enemy.pos)) {
+      if ((bullet.sender == TYPE_PLAYER) && bullet.testCollision(enemy.pos)) {
         points += 10;
         enemy.kill();
         bullets.splice(i, 1);
         continue;
+      }
+
+      if ((bullet.sender == TYPE_ENEMY) && bullet.testCollision(player.pos)) {
+        player.kill();
       }
     }
 
