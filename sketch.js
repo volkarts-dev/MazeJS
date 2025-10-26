@@ -362,7 +362,8 @@ class Bullet {
 let textureAtlas;
 
 let level;
-let points;
+let score;
+let highscore = localStorage.getItem("highscore") ?? 0;
 
 let board;
 let player;
@@ -375,12 +376,15 @@ let turnRequest = null;
 let fireRequest = false;
 let beamRequest = false;
 
+let hint = "";
+let hintTimer = null;
+
 function preload() {
   textureAtlas = loadImage('/assets/maze.png');
 }
 
 function setup() {
-  createCanvas(1000, 815);
+  createCanvas(1010, 815);
   noSmooth();
 
   frameRate(30);
@@ -447,28 +451,40 @@ function draw() {
     enemy.draw();
   }
 
+
   for (let i = 0; i < bullets.length; i++) {
     const bullet = bullets[i];
 
-    bullet.update();
+    if (active && !pause) {
+      bullet.update();
 
-    if (board.isOutOfBounds(bullet.pos)) {
-      bullets.splice(i, 1);
-      continue;
-    }
-
-    for (let e = 0; e < enemies.length; e++) {
-      const enemy = enemies[e];
-
-      if ((bullet.sender == TYPE_PLAYER) && bullet.testCollision(enemy.pos)) {
-        points += 10;
-        enemy.kill();
+      if (board.isOutOfBounds(bullet.pos)) {
         bullets.splice(i, 1);
         continue;
       }
 
-      if ((bullet.sender == TYPE_ENEMY) && bullet.testCollision(player.pos)) {
-        player.kill();
+      for (let e = 0; e < enemies.length; e++) {
+        const enemy = enemies[e];
+
+        if ((bullet.sender == TYPE_PLAYER) && bullet.testCollision(enemy.pos)) {
+          score += 10 + 5 * Math.floor(level / 5);
+
+          if (score > highscore) {
+            highscore = score;
+            localStorage.setItem("highscore", highscore);
+            showHint("New highscore", 3000);
+          }
+
+          enemy.kill();
+          bullets.splice(i, 1);
+          continue;
+        }
+
+        if ((bullet.sender == TYPE_ENEMY) && bullet.testCollision(player.pos)) {
+          player.kill();
+          bullets.splice(i, 1);
+          continue;
+        }
       }
     }
 
@@ -477,27 +493,39 @@ function draw() {
 
   fill("gray");
   textSize(10);
-  text("Level:", 410, 18);
-  text("Energy:", 410, 38);
-  text("Points:", 410, 58);
+  textCenter("Level", 450, 20);
+  textCenter("Energy", 450, 60);
+  textCenter("Score", 450, 100);
+  textCenter("Highscore", 450, 200);
 
   fill("white");
   textSize(15);
-  text(level, 450, 20);
-  text(Math.round(player.energy), 450, 40);
-  text(points, 450, 60);
+  textCenter(level, 450, 40);
+  textCenter(Math.round(player.energy), 450, 80);
+  textCenter(score, 450, 120);
+  textCenter(highscore, 450, 220);
+
+  textSize(10);
+  textCenter(hint, 450, 380);
 }
 
 function keyPressed() {
   if (!active) {
     if (keyCode == 32) {
       active = true;
+      showHint("");
     }
     return;
   }
 
   if (keyCode == ESCAPE) {
     pause = !pause;
+
+    if (pause) {
+      showHint("[ESC] to continue");
+    } else {
+      showHint("");
+    }
     return;
   }
 
@@ -507,8 +535,7 @@ function keyPressed() {
 
   if (keyCode == 32) {
     fireRequest = true;
-  }
-  else if (keyCode == KEY_J) {
+  } else if (keyCode == KEY_J) {
     beamRequest = true;
   } else if (keyCode == LEFT_ARROW) {
     turnRequest = WEST;
@@ -529,7 +556,7 @@ function keyReleased() {
 function startLevel(lvl) {
   level = lvl;
   if (level == 1) {
-    points = 0;
+    score = 0;
   }
   eneryRefresh = 0;
 
@@ -548,6 +575,8 @@ function startLevel(lvl) {
   }
 
   bullets = [];
+
+  showHint("[SPACE] to start");
 }
 
 function vec2Dir(vec) {
@@ -560,4 +589,25 @@ function vec2Dir(vec) {
 
 function clamp(num, min, max) {
   return (num <= min) ? min : ((num >= max) ? max : num);
+}
+
+function textCenter(txt, x, y) {
+  const w = textWidth(txt);
+  text(txt, Math.round(x - w / 2), y);
+}
+
+function showHint(h, timeout = -1) {
+  if (hintTimer) {
+    clearTimeout(hintTimer);
+  }
+
+  hint = h;
+  hintTimer = null;
+
+  if (timeout > 0) {
+    setTimeout(() => {
+      hintTimer = null;
+      hint = "";
+    }, timeout);
+  }
 }
