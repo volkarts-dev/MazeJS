@@ -193,6 +193,11 @@ class Player {
     this.ttl = 5;
   }
 
+  reawaken() {
+    this.dying = false;
+    this.ttl = -1;
+  }
+
   testCollision(vec) {
     if (
       !this.dying &&
@@ -362,6 +367,7 @@ class Bullet {
 let textureAtlas;
 
 let level;
+let lives;
 let score;
 let highscore = localStorage.getItem("highscore") ?? 0;
 
@@ -392,121 +398,151 @@ function setup() {
 }
 
 function draw() {
+  if (active && !pause) {
+    update();
+  }
+
   scale(2);
   translate(5, 5, 0);
 
   background(0);
+
   board.draw();
 
+  for (let i = 0; i < enemies.length; i++) {
+    enemies[i].draw();
+  }
+
+  player.draw();
+
+  for (let i = 0; i < bullets.length; i++) {
+    bullets[i].draw();
+  }
+
+  drawInfo();
+}
+
+function drawInfo() {
+  fill("gray");
+  textSize(10);
+  textCenter("Level", 20);
+  textCenter("Lives", 60);
+  textCenter("Energy", 100);
+  textCenter("Score", 140);
+  textCenter("Highscore", 200);
+
+  fill("white");
+  textSize(15);
+  textCenter(level, 40);
+  textCenter(lives, 80);
+  textCenter(Math.round(player.energy), 120);
+  textCenter(score, 160);
+  textCenter(highscore, 220);
+
+  textSize(10);
+
+  if (pause) {
+    textCenter("[Arrows] Direction", 320);
+    textCenter("[SPACE] Fire", 335);
+    textCenter("'B' Boost", 350);
+    textCenter("'J' Jump", 365);
+    textCenter("[ESC] to continue", 380);
+    fill('gray');
+    textSize(5);
+    textCenter("(c) 1996,2025 VolkArts", 390);
+  } else {
+    textCenter(hint, 380);
+  }
+}
+
+function update() {
   if (player.ttl == 0) {
     active = false;
-    startLevel(1);
+    lives--;
+    if (lives == 0) {
+      startLevel(1);
+    } else {
+      player.reawaken();
+      resetPositions();
+    }
+    return;
   }
 
   if (enemies.length == 0) {
     active = false;
     startLevel(level + 1);
+    return;
   }
 
   const playerJuncOpts = board.getJunctionOptions(player.pos);
 
-  if (active && !pause) {
-    player.update(playerJuncOpts);
-  }
-
-  player.draw();
+  player.update(playerJuncOpts);
 
   for (let i = 0; i < enemies.length; i++) {
     const enemy = enemies[i];
 
-    if (active && !pause) {
-      enemy.update();
+    enemy.update();
 
-      if (enemy.ttl == 0) {
-        enemies.splice(i, 1);
+    if (enemy.ttl == 0) {
+      enemies.splice(i, 1);
+      continue;
+    }
+
+    for (let e = 0; e < enemies.length; e++) {
+      if (e == i) {
         continue;
       }
-
-      for (let e = 0; e < enemies.length; e++) {
-        if (e == i) {
-          continue;
-        }
-        if (enemy.testCollision(enemies[e].pos)) {
-          enemy.turnAround();
-          break;
-        }
-      }
-
-      if (player.testCollision(enemy.pos)) {
-        player.kill();
-        enemy.kill();
-      }
-
-      const juncOpts = board.getJunctionOptions(enemy.pos);
-      if (juncOpts) {
-        enemy.decideNewDir(juncOpts, player.pos);
+      if (enemy.testCollision(enemies[e].pos)) {
+        enemy.turnAround();
+        break;
       }
     }
 
-    enemy.draw();
-  }
+    if (player.testCollision(enemy.pos)) {
+      player.kill();
+      enemy.kill();
+    }
 
+    const juncOpts = board.getJunctionOptions(enemy.pos);
+    if (juncOpts) {
+      enemy.decideNewDir(juncOpts, player.pos);
+    }
+  }
 
   for (let i = 0; i < bullets.length; i++) {
     const bullet = bullets[i];
 
-    if (active && !pause) {
-      bullet.update();
+    bullet.update();
 
-      if (board.isOutOfBounds(bullet.pos)) {
+    if (board.isOutOfBounds(bullet.pos)) {
+      bullets.splice(i, 1);
+      continue;
+    }
+
+    for (let e = 0; e < enemies.length; e++) {
+      const enemy = enemies[e];
+
+      if ((bullet.sender == TYPE_PLAYER) && bullet.testCollision(enemy.pos)) {
+        score += 10 + 5 * Math.floor(level / 5);
+
+        if (score > highscore) {
+          highscore = score;
+          localStorage.setItem("highscore", highscore);
+          showHint("New highscore", 3000);
+        }
+
+        enemy.kill();
         bullets.splice(i, 1);
         continue;
       }
 
-      for (let e = 0; e < enemies.length; e++) {
-        const enemy = enemies[e];
-
-        if ((bullet.sender == TYPE_PLAYER) && bullet.testCollision(enemy.pos)) {
-          score += 10 + 5 * Math.floor(level / 5);
-
-          if (score > highscore) {
-            highscore = score;
-            localStorage.setItem("highscore", highscore);
-            showHint("New highscore", 3000);
-          }
-
-          enemy.kill();
-          bullets.splice(i, 1);
-          continue;
-        }
-
-        if ((bullet.sender == TYPE_ENEMY) && bullet.testCollision(player.pos)) {
-          player.kill();
-          bullets.splice(i, 1);
-          continue;
-        }
+      if ((bullet.sender == TYPE_ENEMY) && bullet.testCollision(player.pos)) {
+        player.kill();
+        bullets.splice(i, 1);
+        continue;
       }
     }
-
-    bullet.draw();
   }
-
-  fill("gray");
-  textSize(10);
-  textCenter("Level", 450, 20);
-  textCenter("Energy", 450, 60);
-  textCenter("Score", 450, 100);
-  textCenter("Highscore", 450, 200);
-
-  fill("white");
-  textSize(15);
-  textCenter(level, 450, 40);
-  textCenter(Math.round(player.energy), 450, 80);
-  textCenter(score, 450, 120);
-  textCenter(highscore, 450, 220);
-
-  textSize(10);
-  textCenter(hint, 450, 380);
 }
 
 function keyPressed() {
@@ -520,12 +556,7 @@ function keyPressed() {
 
   if (keyCode == ESCAPE) {
     pause = !pause;
-
-    if (pause) {
-      showHint("[ESC] to continue");
-    } else {
-      showHint("");
-    }
+    showHint("");
     return;
   }
 
@@ -548,15 +579,15 @@ function keyPressed() {
   }
 }
 
-function keyReleased() {
-}
-
 // ************************************************************************************************
 
 function startLevel(lvl) {
   level = lvl;
   if (level == 1) {
+    lives = 3;
     score = 0;
+  } else {
+    lives += ((level % 5) == 0) ? 1 : 0;
   }
   eneryRefresh = 0;
 
@@ -579,6 +610,24 @@ function startLevel(lvl) {
   showHint("[SPACE] to start");
 }
 
+function resetPositions() {
+  player.pos = createVector(5 * BlockSize * 2, 10 * BlockSize * 2);
+  player.dir = NORTH;
+
+  let i = 0;
+  let h = Math.floor(enemies.length / 2);
+  for (; i < h; i++) {
+    enemies[i].pos = createVector(i * BlockSize * 2, 0 * BlockSize * 2);
+    enemies[i].dir = SOUTH;
+  }
+  for (; i < enemies.length; i++) {
+    enemies[i].pos = createVector((10 - h + i - h) * BlockSize * 2, 0 * BlockSize * 2);
+    enemies[i].dir = SOUTH;
+  }
+
+  bullets = [];
+}
+
 function vec2Dir(vec) {
   if (Math.abs(vec.x) > Math.abs(vec.y)) {
     return vec.x < 0 ? WEST : EAST;
@@ -591,9 +640,9 @@ function clamp(num, min, max) {
   return (num <= min) ? min : ((num >= max) ? max : num);
 }
 
-function textCenter(txt, x, y) {
+function textCenter(txt, y) {
   const w = textWidth(txt);
-  text(txt, Math.round(x - w / 2), y);
+  text(txt, Math.round(450 - w / 2), y);
 }
 
 function showHint(h, timeout = -1) {
