@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: © 1996,2025 Daniel Volk <mail@volkarts.com>
+// SPDX-License-Identifier: GPL-3.0-only
+
 const NORTH = 0;
 const EAST = 1;
 const SOUTH = 2;
@@ -505,7 +508,7 @@ function drawInfo() {
     textCenter("[ESC] to continue", 380);
     fill('gray');
     textSize(5);
-    textCenter("(c) 1996,2025 VolkArts", 390);
+    textCenter("© 1996,2025 VolkArts", 390);
   } else {
     textCenter(hint, 380);
   }
