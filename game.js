@@ -485,6 +485,7 @@ function draw() {
 function drawInfo() {
   fill("gray");
   textSize(10);
+  textCenter("Level", 20);
   textCenter("Lives", 60);
   textCenter("Energy", 100);
   textCenter("Score", 140);
