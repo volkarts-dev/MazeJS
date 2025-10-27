@@ -3,8 +3,8 @@ const EAST = 1;
 const SOUTH = 2;
 const WEST = 3;
 
-const KEY_B = 66;
-const KEY_J = 74;
+const KEY_A = 65;
+const KEY_Q = 81;
 
 const TYPE_PLAYER = 1;
 const TYPE_ENEMY = 2;
@@ -32,7 +32,50 @@ const PivotOffset = [
   [0, Math.ceil(BlockSize / 2)],
 ];
 
-const BeamTime = 30;
+const PlayerTexPos = [
+  [BlockSize * 0, BlockSize * 1],
+  [BlockSize * 1, BlockSize * 1],
+  [BlockSize * 2, BlockSize * 1],
+  [BlockSize * 3, BlockSize * 1],
+];
+
+const BoostTexPos = [
+  [BlockSize * 0, BlockSize * 3],
+  [BlockSize * 1, BlockSize * 3],
+  [BlockSize * 2, BlockSize * 3],
+  [BlockSize * 3, BlockSize * 3],
+];
+
+const EnemyTexPos = [
+  [BlockSize * 0, BlockSize * 2],
+  [BlockSize * 1, BlockSize * 2],
+  [BlockSize * 2, BlockSize * 2],
+  [BlockSize * 3, BlockSize * 2],
+];
+
+const ExplodeTexPos = [
+  [BlockSize * 0, BlockSize * 4],
+  [BlockSize * 1, BlockSize * 4],
+  [BlockSize * 2, BlockSize * 4],
+  [BlockSize * 3, BlockSize * 4],
+];
+
+const BeamTexPos = [
+  [BlockSize * 0, BlockSize * 0],
+  [BlockSize * 1, BlockSize * 0],
+  [BlockSize * 2, BlockSize * 0],
+  [BlockSize * 3, BlockSize * 0],
+];
+
+const BoostTileOffset = [
+  [0, BlockSize],
+  [-BlockSize, 0],
+  [0, -BlockSize],
+  [BlockSize, 0],
+]
+
+const BeamTime = 15;
+const ExplodeTime = 5;
 
 // ************************************************************************************************
 
@@ -82,30 +125,6 @@ class Board {
 // ************************************************************************************************
 
 class Player {
-  static texPos = [
-    [BlockSize * 0, BlockSize * 1],
-    [BlockSize * 1, BlockSize * 1],
-    [BlockSize * 2, BlockSize * 1],
-    [BlockSize * 3, BlockSize * 1],
-    [BlockSize * 1, BlockSize * 0],
-  ];
-
-  static boostTexPos = [
-    [BlockSize * 0, BlockSize * 3],
-    [BlockSize * 1, BlockSize * 3],
-    [BlockSize * 2, BlockSize * 3],
-    [BlockSize * 3, BlockSize * 3],
-  ];
-
-  static beamTexPos = [BlockSize * 0, BlockSize * 0];
-
-  static boostTileOffset = [
-    [0, BlockSize],
-    [-BlockSize, 0],
-    [0, -BlockSize],
-    [BlockSize, 0],
-  ]
-
   constructor() {
     this.pos = createVector(5 * BlockSize * 2, 10 * BlockSize * 2);
     this.dir = NORTH;
@@ -126,12 +145,17 @@ class Player {
 
       if (beamRequest) {
         if (this._drawEnergy(30)) {
+          beamSound.play();
           this.beaming = BeamTime;
+        } else {
+          beamRequest = false;
         }
       }
 
       if (fireRequest) {
         fireRequest = false;
+
+        shootSound.play();
 
         if (this._drawEnergy(5)) {
           const pivot = p5.Vector.add(this.pos, PivotOffset[this.dir]);
@@ -140,10 +164,18 @@ class Player {
       }
 
       this.boost = false;
-      if (keyIsDown(KEY_B)) {
-        if (this._drawEnergy(1)) {
+      if (keyIsDown(KEY_A)) {
+        if (this._drawEnergy(0.5)) {
           this.boost = true;
+
+          if (!boostSound.isLooping()) {
+            boostSound.loop();
+          }
         }
+      }
+
+      if (!this.boost && boostSound.isLooping()) {
+        boostSound.pause();
       }
 
       if (!juncOpts || juncOpts.includes(this.dir)) {
@@ -173,29 +205,43 @@ class Player {
       return;
     }
 
+    let tex;
+
     if (this.beaming == -1) {
-      const t = Player.texPos[this.dying ? 4 : this.dir];
-      image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, t[0], t[1], BlockSize, BlockSize);
+      if (!this.dying) {
+        tex = PlayerTexPos[this.dir];
+      } else {
+        tex = ExplodeTexPos[frameIndex(this.ttl, ExplodeTime)];
+      }
+      image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, tex[0], tex[1], BlockSize, BlockSize);
 
       if (!this.dying && this.boost) {
-        const bt = Player.boostTexPos[this.dir];
-        const bpos = p5.Vector.add(this.pos, Player.boostTileOffset[this.dir]);
-        image(textureAtlas, bpos.x, bpos.y, BlockSize, BlockSize, bt[0], bt[1], BlockSize, BlockSize);
+        tex = BoostTexPos[this.dir];
+        const bpos = p5.Vector.add(this.pos, BoostTileOffset[this.dir]);
+        image(textureAtlas, bpos.x, bpos.y, BlockSize, BlockSize, tex[0], tex[1], BlockSize, BlockSize);
       }
     } else {
-      const bt = Player.beamTexPos;
-      image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, bt[0], bt[1], BlockSize, BlockSize);
+      const halfBeamTime = Math.floor(BeamTime / 2);
+      if (this.beaming <= halfBeamTime) {
+        tex = BeamTexPos[frameIndex(halfBeamTime - this.beaming, halfBeamTime)];
+      } else {
+        tex = BeamTexPos[frameIndex(this.beaming - halfBeamTime, halfBeamTime)];
+      }
+      image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, tex[0], tex[1], BlockSize, BlockSize);
     }
   }
 
   kill() {
+    boostSound.pause();
+    this.boost = false;
     this.dying = true;
-    this.ttl = 5;
+    this.ttl = ExplodeTime;
   }
 
   reawaken() {
     this.dying = false;
     this.ttl = -1;
+    this.energy = 100;
   }
 
   testCollision(vec) {
@@ -251,14 +297,6 @@ class Player {
 // ************************************************************************************************
 
 class Enemy {
-  static texPos = [
-    [BlockSize * 0, BlockSize * 2],
-    [BlockSize * 1, BlockSize * 2],
-    [BlockSize * 2, BlockSize * 2],
-    [BlockSize * 3, BlockSize * 2],
-    [BlockSize * 1, BlockSize * 0],
-  ];
-
   constructor(pos) {
     this.pos = pos;
     this.dir = SOUTH;
@@ -269,6 +307,8 @@ class Enemy {
   update() {
     if (!this.dying) {
       if (Math.random() < (level / 1000)) {
+        enemyShootSound.play();
+
         const pivot = p5.Vector.add(this.pos, PivotOffset[this.dir]);
         bullets.push(new Bullet(pivot, this.dir, TYPE_ENEMY));
       }
@@ -282,8 +322,13 @@ class Enemy {
   }
 
   draw() {
-    const t = Enemy.texPos[this.dying ? 4 : this.dir];
-    image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, t[0], t[1], BlockSize, BlockSize);
+    let tex;
+    if (!this.dying) {
+      tex = EnemyTexPos[this.dir];
+    } else {
+      tex = ExplodeTexPos[frameIndex(this.ttl, ExplodeTime)];
+    }
+    image(textureAtlas, this.pos.x, this.pos.y, BlockSize, BlockSize, tex[0], tex[1], BlockSize, BlockSize);
   }
 
   decideNewDir(options, targetPos) {
@@ -306,7 +351,7 @@ class Enemy {
 
   kill() {
     this.dying = true;
-    this.ttl = 5;
+    this.ttl = ExplodeTime;
   }
 
   testCollision(vec) {
@@ -365,6 +410,11 @@ class Bullet {
 // ************************************************************************************************
 
 let textureAtlas;
+let pauseSound;
+let shootSound;
+let explodeSound;
+let boostSound;
+let beamSound;
 
 let level;
 let lives;
@@ -386,7 +436,14 @@ let hint = "";
 let hintTimer = null;
 
 function preload() {
-  textureAtlas = loadImage('/assets/maze.png');
+  textureAtlas = loadImage("assets/maze.png");
+
+  pauseSound = loadSound("assets/click.ogg");
+  shootSound = loadSound("assets/shoot.ogg");
+  enemyShootSound = loadSound("assets/enemy_shoot.ogg");
+  explodeSound = loadSound("assets/explode.ogg");
+  boostSound  = loadSound("assets/boost.ogg");
+  beamSound = loadSound("assets/beam.ogg");
 }
 
 function setup() {
@@ -425,7 +482,6 @@ function draw() {
 function drawInfo() {
   fill("gray");
   textSize(10);
-  textCenter("Level", 20);
   textCenter("Lives", 60);
   textCenter("Energy", 100);
   textCenter("Score", 140);
@@ -444,8 +500,8 @@ function drawInfo() {
   if (pause) {
     textCenter("[Arrows] Direction", 320);
     textCenter("[SPACE] Fire", 335);
-    textCenter("'B' Boost", 350);
-    textCenter("'J' Jump", 365);
+    textCenter("'A' Boost", 350);
+    textCenter("'Q' Jump", 365);
     textCenter("[ESC] to continue", 380);
     fill('gray');
     textSize(5);
@@ -499,6 +555,8 @@ function update() {
     }
 
     if (player.testCollision(enemy.pos)) {
+      explodeSound.play();
+      setTimeout(() => explodeSound.play(), 10);
       player.kill();
       enemy.kill();
     }
@@ -531,12 +589,14 @@ function update() {
           showHint("New highscore", 3000);
         }
 
+        explodeSound.play();
         enemy.kill();
         bullets.splice(i, 1);
         continue;
       }
 
       if ((bullet.sender == TYPE_ENEMY) && bullet.testCollision(player.pos)) {
+        explodeSound.play();
         player.kill();
         bullets.splice(i, 1);
         continue;
@@ -555,6 +615,7 @@ function keyPressed() {
   }
 
   if (keyCode == ESCAPE) {
+    pauseSound.play();
     pause = !pause;
     showHint("");
     return;
@@ -566,7 +627,7 @@ function keyPressed() {
 
   if (keyCode == 32) {
     fireRequest = true;
-  } else if (keyCode == KEY_J) {
+  } else if (keyCode == KEY_Q) {
     beamRequest = true;
   } else if (keyCode == LEFT_ARROW) {
     turnRequest = WEST;
@@ -614,6 +675,10 @@ function resetPositions() {
   player.pos = createVector(5 * BlockSize * 2, 10 * BlockSize * 2);
   player.dir = NORTH;
 
+  turnRequest = null;
+  fireRequest = false;
+  beamRequest = false;
+
   let i = 0;
   let h = Math.floor(enemies.length / 2);
   for (; i < h; i++) {
@@ -626,6 +691,8 @@ function resetPositions() {
   }
 
   bullets = [];
+
+  showHint("[SPACE] to start");
 }
 
 function vec2Dir(vec) {
@@ -659,4 +726,8 @@ function showHint(h, timeout = -1) {
       hint = "";
     }, timeout);
   }
+}
+
+function frameIndex(pos, time) {
+  return Math.floor(pos / time * 3);
 }
