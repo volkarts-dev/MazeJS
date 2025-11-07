@@ -455,7 +455,7 @@ function setup() {
   noSmooth();
 
   frameRate(30);
-  startLevel(1);
+  startLevel(1, false);
 }
 
 function draw() {
@@ -512,7 +512,11 @@ function drawInfo() {
     textSize(5);
     textCenter("© 1996,2025 VolkArts", 390);
   } else {
-    textCenter(hint, 380);
+    let pos = 380 - 15 * hint.length;
+    for (let i = 0; i < hint.length; i++) {
+      textCenter(hint[i], pos);
+      pos += 15;
+    }
   }
 }
 
@@ -521,7 +525,7 @@ function update() {
     active = false;
     lives--;
     if (lives == 0) {
-      startLevel(1);
+      startLevel(1, true);
     } else {
       player.reawaken();
       resetPositions();
@@ -531,7 +535,7 @@ function update() {
 
   if (enemies.length == 0) {
     active = false;
-    startLevel(level + 1);
+    startLevel(level + 1, false);
     return;
   }
 
@@ -614,7 +618,7 @@ function keyPressed() {
   if (!active) {
     if (keyCode == 32) {
       active = true;
-      showHint("");
+      clearHint();
     }
     return;
   }
@@ -622,7 +626,7 @@ function keyPressed() {
   if (keyCode == ESCAPE) {
     pauseSound.play();
     pause = !pause;
-    showHint("");
+    clearHint();
     return;
   }
 
@@ -647,13 +651,13 @@ function keyPressed() {
 
 // ************************************************************************************************
 
-function startLevel(lvl) {
+function startLevel(lvl, gameOver) {
   level = lvl;
   if (level == 1) {
     lives = 3;
     score = 0;
   } else {
-    lives += ((level % 5) == 0) ? 1 : 0;
+    lives += ((level % 2) == 0) ? 1 : 0;
   }
   eneryRefresh = 0;
 
@@ -673,7 +677,11 @@ function startLevel(lvl) {
 
   bullets = [];
 
-  showHint("[SPACE] to start");
+  if (gameOver) {
+    showHint(["GAME OVER", "[SPACE] to restart"]);
+  } else {
+    showHint("[SPACE] to start");
+  }
 }
 
 function resetPositions() {
@@ -722,15 +730,19 @@ function showHint(h, timeout = -1) {
     clearTimeout(hintTimer);
   }
 
-  hint = h;
+  hint = Array.isArray(h) ? h : [h];
   hintTimer = null;
 
   if (timeout > 0) {
     setTimeout(() => {
-      hintTimer = null;
-      hint = "";
+      clearHint();
     }, timeout);
   }
+}
+
+function clearHint() {
+  hintTimer = null;
+  hint = [];
 }
 
 function frameIndex(pos, time) {
