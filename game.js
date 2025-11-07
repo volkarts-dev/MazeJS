@@ -415,6 +415,7 @@ class Bullet {
 let textureAtlas;
 let pauseSound;
 let shootSound;
+let enemyShootSound;
 let explodeSound;
 let boostSound;
 let beamSound;
